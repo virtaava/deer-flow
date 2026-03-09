@@ -226,8 +226,10 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
     if todo_list_middleware is not None:
         middlewares.append(todo_list_middleware)
 
-    # Add TitleMiddleware
-    middlewares.append(TitleMiddleware())
+    # Add TitleMiddleware (skip if disabled — async-only, breaks sync DeerFlowClient)
+    from src.config.title_config import get_title_config
+    if get_title_config().enabled:
+        middlewares.append(TitleMiddleware())
 
     # Add MemoryMiddleware (after TitleMiddleware)
     middlewares.append(MemoryMiddleware(agent_name=agent_name))
