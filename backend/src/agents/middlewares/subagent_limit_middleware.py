@@ -35,7 +35,10 @@ class SubagentLimitMiddleware(AgentMiddleware[AgentState]):
 
     def __init__(self, max_concurrent: int = MAX_CONCURRENT_SUBAGENTS):
         super().__init__()
-        self.max_concurrent = _clamp_subagent_limit(max_concurrent)
+        clamped = _clamp_subagent_limit(max_concurrent)
+        if clamped != max_concurrent:
+            logger.warning(f"max_concurrent_subagents={max_concurrent} clamped to {clamped} (valid range: [{MIN_SUBAGENT_LIMIT}, {MAX_SUBAGENT_LIMIT}])")
+        self.max_concurrent = clamped
 
     def _truncate_task_calls(self, state: AgentState) -> dict | None:
         messages = state.get("messages", [])

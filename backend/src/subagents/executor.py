@@ -164,7 +164,8 @@ class SubagentExecutor:
     def _create_agent(self):
         """Create the agent instance."""
         model_name = _get_model_name(self.config, self.parent_model)
-        model = create_chat_model(name=model_name, thinking_enabled=False)
+        thinking = self.config.thinking_enabled if self.config.thinking_enabled is not None else False
+        model = create_chat_model(name=model_name, thinking_enabled=thinking)
 
         from src.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
         from src.agents.middlewares.output_repair_middleware import OutputRepairMiddleware

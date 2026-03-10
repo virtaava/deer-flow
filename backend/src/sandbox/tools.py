@@ -522,6 +522,10 @@ def str_replace_tool(
             return "OK"
         if old_str not in content:
             return f"Error: String to replace not found in file: {requested_path}"
+        if not replace_all:
+            occurrence_count = content.count(old_str)
+            if occurrence_count > 1:
+                return f"Error: Found {occurrence_count} occurrences of the string in {requested_path}. Provide more context to make the match unique, or set replace_all=True to replace all occurrences."
         if replace_all:
             content = content.replace(old_str, new_str)
         else:
