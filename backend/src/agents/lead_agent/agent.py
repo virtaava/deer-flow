@@ -8,7 +8,9 @@ from src.agents.lead_agent.prompt import apply_prompt_template
 from src.agents.middlewares.clarification_middleware import ClarificationMiddleware
 from src.agents.middlewares.dangling_tool_call_middleware import DanglingToolCallMiddleware
 from src.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
+from src.agents.middlewares.self_evaluation_middleware import SelfEvaluationMiddleware
 from src.agents.middlewares.memory_middleware import MemoryMiddleware
+from src.agents.middlewares.output_repair_middleware import OutputRepairMiddleware
 from src.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
 from src.agents.middlewares.title_middleware import TitleMiddleware
 from src.agents.middlewares.todo_middleware import TodoMiddleware
@@ -216,6 +218,7 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
         List of middleware instances.
     """
     middlewares = build_lead_runtime_middlewares(lazy_init=True)
+    middlewares.append(OutputRepairMiddleware())
 
     # Add summarization middleware if enabled
     summarization_middleware = _create_summarization_middleware()
@@ -251,6 +254,12 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
 
     # LoopDetectionMiddleware — detect and break repetitive tool call loops
     middlewares.append(LoopDetectionMiddleware())
+
+    # SelfEvaluationMiddleware — evaluate final responses for quality (optional)
+    self_eval_enabled = config.get("configurable", {}).get("self_evaluation_enabled", False)
+    if self_eval_enabled:
+        self_eval_model = config.get("configurable", {}).get("self_evaluation_model", None)
+        middlewares.append(SelfEvaluationMiddleware(evaluation_model=self_eval_model))
 
     # ClarificationMiddleware should always be last
     middlewares.append(ClarificationMiddleware())
