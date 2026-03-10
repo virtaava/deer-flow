@@ -3,6 +3,7 @@ from .present_file_tool import present_file_tool
 from .setup_agent_tool import setup_agent
 from .task_tool import task_tool
 from .view_image_tool import view_image_tool
+from .scratchpad_tools import save_finding_tool, read_findings_tool, scratchpad_stats_tool
 
 __all__ = [
     "setup_agent",
@@ -10,4 +11,7 @@ __all__ = [
     "ask_clarification_tool",
     "view_image_tool",
     "task_tool",
+    "save_finding_tool",
+    "read_findings_tool",
+    "scratchpad_stats_tool",
 ]
