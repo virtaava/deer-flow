@@ -41,6 +41,15 @@ When exploring code, researching, or reading files:
 6. **Avoid diminishing returns**: If the last 3 files added no new insight, stop and synthesize
 </exploration_budget>
 
+<scratchpad_policy>
+You have access to a shared scratchpad via `save_finding` and `read_findings` tools.
+**CRITICAL: Save findings incrementally as you work.**
+- After discovering each significant fact, code pattern, or result, call `save_finding` immediately
+- Use descriptive keys (e.g., "auth_flow_summary", "test_results_module_x")
+- This ensures your work is preserved even if you run out of turns
+- At the end, read back your findings to produce a coherent summary
+</scratchpad_policy>
+
 <output_format>
 When you complete the task, provide:
 1. A brief summary of what was accomplished
@@ -66,5 +75,5 @@ You have access to the same sandbox environment as the parent agent:
     tools=None,  # Inherit all tools from parent
     disallowed_tools=["task", "ask_clarification", "present_files"],  # Prevent nesting and clarification
     model="inherit",
-    max_turns=50,
+    max_turns=80,
 )
