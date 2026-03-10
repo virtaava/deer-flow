@@ -104,7 +104,7 @@ class DeerFlowClient:
         *,
         model_name: str | None = None,
         thinking_enabled: bool = True,
-        subagent_enabled: bool = False,
+        subagent_enabled: bool = True,
         plan_mode: bool = False,
     ):
         """Initialize the client.
@@ -196,7 +196,7 @@ class DeerFlowClient:
 
         thinking_enabled = cfg.get("thinking_enabled", True)
         model_name = cfg.get("model_name")
-        subagent_enabled = cfg.get("subagent_enabled", False)
+        subagent_enabled = cfg.get("subagent_enabled", True)
         max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)
 
         kwargs: dict[str, Any] = {

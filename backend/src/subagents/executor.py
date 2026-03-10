@@ -166,10 +166,14 @@ class SubagentExecutor:
         model_name = _get_model_name(self.config, self.parent_model)
         model = create_chat_model(name=model_name, thinking_enabled=False)
 
+        from src.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
+        from src.agents.middlewares.output_repair_middleware import OutputRepairMiddleware
         from src.agents.middlewares.tool_error_handling_middleware import build_subagent_runtime_middlewares
 
-        # Reuse shared middleware composition with lead agent.
+        # Reuse shared middleware composition with lead agent, then add our custom middlewares.
         middlewares = build_subagent_runtime_middlewares(lazy_init=True)
+        middlewares.append(OutputRepairMiddleware(max_retries=1))  # Retry malformed output once
+        middlewares.append(LoopDetectionMiddleware(warn_threshold=2, hard_limit=4))  # Tighter limits for subagents
 
         return create_agent(
             model=model,
