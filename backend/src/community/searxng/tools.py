@@ -61,6 +61,9 @@ def web_fetch_tool(url: str) -> str:
     timeout = 10
     if config is not None and "timeout" in config.model_extra:
         timeout = config.model_extra.get("timeout")
+    max_content_chars = 16384
+    if config is not None and "max_content_chars" in config.model_extra:
+        max_content_chars = config.model_extra.get("max_content_chars")
 
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; DeerFlow/2.0)"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -72,9 +75,9 @@ def web_fetch_tool(url: str) -> str:
             from src.utils.readability import ReadabilityExtractor
             extractor = ReadabilityExtractor()
             article = extractor.extract_article(raw.decode("utf-8", errors="replace"))
-            return article.to_markdown()[:4096]
+            return article.to_markdown()[:max_content_chars]
         except Exception:
             pass
 
     text = raw.decode("utf-8", errors="replace")
-    return text[:4096]
+    return text[:max_content_chars]
