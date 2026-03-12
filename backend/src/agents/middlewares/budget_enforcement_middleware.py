@@ -10,7 +10,7 @@ Designed for cheap, fast models (e.g. DeepSeek) that don't reliably self-limit.
 
 import logging
 from collections import defaultdict
-from typing import override
+from typing import Any, override
 
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
@@ -41,6 +41,21 @@ _FORCE_MSG = (
     "Producing final answer with all results collected so far. "
     "Check the scratchpad via `read_findings` for your saved work."
 )
+
+
+def _extract_text_from_content(content: list[Any]) -> str:
+    """Extract text from multimodal content list."""
+    parts: list[str] = []
+    for item in content:
+        if isinstance(item, str):
+            parts.append(item)
+        elif isinstance(item, dict):
+            text = item.get("text") or item.get("content")
+            if isinstance(text, str):
+                parts.append(text)
+        else:
+            parts.append(str(item))
+    return "\n".join(parts)
 
 
 class BudgetEnforcementMiddleware(AgentMiddleware[AgentState]):
@@ -76,15 +91,32 @@ class BudgetEnforcementMiddleware(AgentMiddleware[AgentState]):
         self._call_count: dict[str, int] = defaultdict(int)
         # Track which warnings we've already sent per thread to avoid spam
         self._warned: dict[str, set[str]] = defaultdict(set)
+        # Track last seen message count per thread to detect new runs
+        self._last_msg_count: dict[str, int] = defaultdict(int)
 
-    def _get_thread_id(self, state: AgentState) -> str:
+    def _get_thread_id(self, state: AgentState, runtime: Runtime | None = None) -> str:
+        # Prefer runtime.context for thread_id if available
+        if runtime and hasattr(runtime, "context") and isinstance(runtime.context, dict):
+            tid = runtime.context.get("thread_id")
+            if tid:
+                return str(tid)
         thread_data = state.get("thread_data")
         if thread_data and isinstance(thread_data, dict):
             return thread_data.get("workspace_path", "default") or "default"
         return "default"
 
-    def _apply(self, state: AgentState) -> dict | None:
-        thread_id = self._get_thread_id(state)
+    def _maybe_reset_for_new_run(self, state: AgentState, thread_id: str) -> None:
+        """Reset counters if message count decreased (new run on cached instance)."""
+        msg_count = len(state.get("messages", []))
+        last_count = self._last_msg_count.get(thread_id, 0)
+        if msg_count < last_count:
+            logger.info("Budget middleware: detected new run for thread %s (msgs %d < %d), resetting", thread_id, msg_count, last_count)
+            self.reset(thread_id)
+        self._last_msg_count[thread_id] = msg_count
+
+    def _apply(self, state: AgentState, runtime: Runtime | None = None) -> dict | None:
+        thread_id = self._get_thread_id(state, runtime)
+        self._maybe_reset_for_new_run(state, thread_id)
         self._call_count[thread_id] += 1
         turns_used = self._call_count[thread_id]
         effective_total = max(self.max_turns // 8, 10)
@@ -124,9 +156,9 @@ class BudgetEnforcementMiddleware(AgentMiddleware[AgentState]):
 
         return None
 
-    def _apply_after_model(self, state: AgentState) -> dict | None:
+    def _apply_after_model(self, state: AgentState, runtime: Runtime | None = None) -> dict | None:
         """After model responds: if we're past force threshold, strip tool calls."""
-        thread_id = self._get_thread_id(state)
+        thread_id = self._get_thread_id(state, runtime)
         turns_used = self._call_count.get(thread_id, 0)
         if turns_used < self.force_at:
             return None
@@ -143,39 +175,50 @@ class BudgetEnforcementMiddleware(AgentMiddleware[AgentState]):
         if not tool_calls:
             return None
 
-        thread_id = self._get_thread_id(state)
         logger.warning(
             "Budget force-stop — stripping %d tool calls from AI response",
             len(tool_calls),
             extra={"thread_id": thread_id, "turns_used": turns_used},
         )
         effective_total = max(self.max_turns // 8, 10)
+        force_text = _FORCE_MSG.format(used=turns_used, total=effective_total)
+
+        # Handle both string and list content (multimodal messages)
+        content = last_msg.content
+        if isinstance(content, list):
+            base_content = _extract_text_from_content(content)
+        else:
+            base_content = content or ""
+        new_content = f"{base_content}\n\n{force_text}" if base_content else force_text
+
         stripped_msg = last_msg.model_copy(update={
             "tool_calls": [],
-            "content": (last_msg.content or "") + f"\n\n{_FORCE_MSG.format(used=turns_used, total=effective_total)}",
+            "content": new_content,
         })
         return {"messages": [stripped_msg]}
 
     @override
     def before_model(self, state: AgentState, runtime: Runtime) -> dict | None:
-        return self._apply(state)
+        return self._apply(state, runtime)
 
     @override
     async def abefore_model(self, state: AgentState, runtime: Runtime) -> dict | None:
-        return self._apply(state)
+        return self._apply(state, runtime)
 
     @override
     def after_model(self, state: AgentState, runtime: Runtime) -> dict | None:
-        return self._apply_after_model(state)
+        return self._apply_after_model(state, runtime)
 
     @override
     async def aafter_model(self, state: AgentState, runtime: Runtime) -> dict | None:
-        return self._apply_after_model(state)
+        return self._apply_after_model(state, runtime)
 
     def reset(self, thread_id: str | None = None) -> None:
         if thread_id:
             self._warned.pop(thread_id, None)
             self._call_count.pop(thread_id, None)
+            self._last_msg_count.pop(thread_id, None)
         else:
             self._warned.clear()
             self._call_count.clear()
+            self._last_msg_count.clear()
