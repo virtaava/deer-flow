@@ -26,20 +26,18 @@ _DEFAULT_FORCE_FRACTION = 0.95  # Strip tool calls, force final answer
 
 _WARN_MSG = (
     "[BUDGET WARNING] You have used {used} of {total} allowed turns. "
-    "Start wrapping up. Save your key findings via `save_finding` tool now, "
-    "then produce your final answer."
+    "Start wrapping up — produce your final answer soon."
 )
 
 _URGENT_MSG = (
     "[BUDGET CRITICAL] You have used {used} of {total} turns — only {remaining} left! "
-    "STOP exploring. Call `save_finding` for any unsaved results, then immediately "
-    "produce your final summary with everything you have found so far."
+    "STOP exploring. Immediately produce your final summary with everything "
+    "you have found so far."
 )
 
 _FORCE_MSG = (
     "[BUDGET EXHAUSTED] Turn limit nearly reached ({used}/{total}). "
-    "Producing final answer with all results collected so far. "
-    "Check the scratchpad via `read_findings` for your saved work."
+    "Producing final answer with all results collected so far."
 )
 
 
@@ -62,8 +60,9 @@ class BudgetEnforcementMiddleware(AgentMiddleware[AgentState]):
     """Injects budget warnings and forces output before recursion limit.
 
     Counts before_model invocations directly (not messages in state, which
-    can decrease due to summarization).  Each model call ≈ 2 graph steps
-    (agent node + tools node), so thresholds are applied against max_turns/2.
+    can decrease due to summarization).  Each model call consumes ~8 graph
+    steps (model node + tools node + middleware nodes), so thresholds are
+    applied against max_turns // 8.
 
     Args:
         max_turns: The recursion limit for this agent.
@@ -120,7 +119,7 @@ class BudgetEnforcementMiddleware(AgentMiddleware[AgentState]):
         self._call_count[thread_id] += 1
         turns_used = self._call_count[thread_id]
         effective_total = max(self.max_turns // 8, 10)
-        logger.info(f"Budget check: {turns_used}/{effective_total} model calls (warn={self.warn_at}, urgent={self.urgent_at}, force={self.force_at})")
+        logger.debug("Budget check: %d/%d model calls (warn=%d, urgent=%d, force=%d)", turns_used, effective_total, self.warn_at, self.urgent_at, self.force_at)
         warned = self._warned[thread_id]
 
         if turns_used >= self.force_at and "force" not in warned:
