@@ -1,4 +1,6 @@
 import json
+import logging
+import urllib.error
 import urllib.request
 import urllib.parse
 
@@ -6,12 +8,32 @@ from langchain.tools import tool
 
 from src.config import get_app_config
 
+logger = logging.getLogger(__name__)
+
+
+def _get_tool_extra(tool_name: str) -> dict:
+    """Safely get model_extra dict for a tool config, handling None."""
+    config = get_app_config().get_tool_config(tool_name)
+    if config is None:
+        return {}
+    return config.model_extra or {}
+
 
 def _get_base_url() -> str:
-    config = get_app_config().get_tool_config("web_search")
-    if config is not None and "base_url" in config.model_extra:
-        return config.model_extra.get("base_url")
-    return "http://127.0.0.1:8080"
+    extra = _get_tool_extra("web_search")
+    return extra.get("base_url", "http://127.0.0.1:8080")
+
+
+def _get_max_content_chars() -> int:
+    """Get max_content_chars from config with validation."""
+    extra = _get_tool_extra("web_fetch")
+    raw = extra.get("max_content_chars", 16384)
+    try:
+        value = int(raw)
+        return max(value, 1)
+    except (TypeError, ValueError):
+        logger.warning("Invalid max_content_chars=%r, using default 16384", raw)
+        return 16384
 
 
 @tool("web_search", parse_docstring=True)
@@ -21,18 +43,22 @@ def web_search_tool(query: str) -> str:
     Args:
         query: The query to search for.
     """
-    config = get_app_config().get_tool_config("web_search")
-    max_results = 5
-    if config is not None and "max_results" in config.model_extra:
-        max_results = config.model_extra.get("max_results")
+    extra = _get_tool_extra("web_search")
+    try:
+        max_results = int(extra.get("max_results", 5))
+    except (TypeError, ValueError):
+        max_results = 5
 
     base_url = _get_base_url()
     params = urllib.parse.urlencode({"q": query, "format": "json"})
     url = f"{base_url}/search?{params}"
 
-    req = urllib.request.Request(url)
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        data = json.loads(resp.read())
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError) as exc:
+        return json.dumps({"error": f"Search request failed: {exc}"})
 
     results = data.get("results", [])[:max_results]
     normalized = [
@@ -57,18 +83,24 @@ def web_fetch_tool(url: str) -> str:
     Args:
         url: The URL to fetch the contents of.
     """
-    config = get_app_config().get_tool_config("web_fetch")
-    timeout = 10
-    if config is not None and "timeout" in config.model_extra:
-        timeout = config.model_extra.get("timeout")
-    max_content_chars = 16384
-    if config is not None and "max_content_chars" in config.model_extra:
-        max_content_chars = config.model_extra.get("max_content_chars")
+    # Validate URL scheme
+    if not url.startswith(("http://", "https://")):
+        return json.dumps({"error": f"Invalid URL scheme. URLs must start with http:// or https://"})
 
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; DeerFlow/2.0)"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        content_type = resp.headers.get("Content-Type", "")
-        raw = resp.read()
+    extra = _get_tool_extra("web_fetch")
+    try:
+        timeout = int(extra.get("timeout", 10))
+    except (TypeError, ValueError):
+        timeout = 10
+    max_content_chars = _get_max_content_chars()
+
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; DeerFlow/2.0)"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            content_type = resp.headers.get("Content-Type", "")
+            raw = resp.read()
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError) as exc:
+        return json.dumps({"error": f"Failed to fetch URL: {exc}"})
 
     if "text/html" in content_type:
         try:
@@ -76,8 +108,8 @@ def web_fetch_tool(url: str) -> str:
             extractor = ReadabilityExtractor()
             article = extractor.extract_article(raw.decode("utf-8", errors="replace"))
             return article.to_markdown()[:max_content_chars]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Readability extraction failed for %s: %s", url, exc)
 
     text = raw.decode("utf-8", errors="replace")
     return text[:max_content_chars]
