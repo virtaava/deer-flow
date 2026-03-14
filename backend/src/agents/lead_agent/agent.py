@@ -254,7 +254,7 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
         middlewares.append(SubagentLimitMiddleware(max_concurrent=max_concurrent_subagents))
 
     # BudgetEnforcementMiddleware — inject warnings and force output before recursion limit
-    recursion_limit = config.get("recursion_limit", 100)
+    recursion_limit = config.get("recursion_limit", 250)
     middlewares.append(BudgetEnforcementMiddleware(max_turns=recursion_limit))
 
     # LoopDetectionMiddleware — detect and break repetitive tool call loops

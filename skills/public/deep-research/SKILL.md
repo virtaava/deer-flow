@@ -177,6 +177,50 @@ Your research is sufficient when you can confidently answer:
 - What are the challenges or limitations?
 - What makes this topic relevant or important now?
 
+## Budget Awareness & Convergence
+
+You have a limited number of tool calls before the system forces you to produce output. **Plan your research budget explicitly.**
+
+### Before Starting Research
+- Estimate how many sub-topics need investigation
+- If the query has 4+ distinct sub-topics, **delegate sub-topics to subagents** using the `task` tool — each subagent gets its own budget
+- For 1-3 sub-topics, handle sequentially yourself
+
+### During Research
+- After 5-7 search/fetch cycles, STOP gathering and START synthesizing
+- Do not search for the same topic with minor query variations — if 2 searches didn't find it, move on
+- Prefer fewer, deeper fetches over many shallow searches
+- Track what you've learned: after each fetch, mentally note "I now know X about Y"
+
+### Convergence Signals — Time to Synthesize
+- You've covered 3+ angles of the main topic
+- New searches are returning information you've already seen
+- You have at least 2-3 concrete sources with real data
+- The budget warning system has injected a message
+
+**When in doubt, synthesize early with what you have.** A focused answer from 5 good sources beats a timeout from trying to find 15.
+
+## Subagent Delegation for Broad Topics
+
+For multi-part research (comparisons, surveys, multi-topic analysis):
+
+1. **Decompose** the question into independent sub-questions
+2. **Delegate** each sub-question to a subagent using the `task` tool
+3. **Merge** the subagent results into a coherent synthesis
+
+This is more reliable than trying to research everything in a single agent loop, because each subagent gets a fresh execution budget.
+
+Example:
+```
+Query: "Compare frameworks A, B, and C"
+
+Instead of: searching for A, then B, then C in one long loop
+Do: delegate "research framework A" to subagent 1,
+    delegate "research framework B" to subagent 2,
+    delegate "research framework C" to subagent 3,
+    then synthesize their findings
+```
+
 ## Common Mistakes to Avoid
 
 - ❌ Stopping after 1-2 searches
@@ -185,6 +229,8 @@ Your research is sufficient when you can confidently answer:
 - ❌ Ignoring contradicting viewpoints or challenges
 - ❌ Using outdated information when current data exists
 - ❌ Starting content generation before research is complete
+- ❌ Exhausting your budget on gathering without leaving room to synthesize
+- ❌ Trying to research 5+ topics in one agent loop instead of delegating to subagents
 
 ## Output
 
