@@ -51,3 +51,7 @@ web/
 
 # Deployment artifacts
 backend/Dockerfile.langgraph
+
+# AutoEvolve runtime
+outputs/
+workspace/
