@@ -26,6 +26,22 @@ from src.models import create_chat_model
 logger = logging.getLogger(__name__)
 
 
+def _resolve_model_from_sona_config(role: str) -> str | None:
+    """Try to resolve a model name from ~/sona/config/models.yaml for a given role.
+    Returns None if the config is unavailable (falls back to DeerFlow defaults).
+    """
+    try:
+        import sys
+        from pathlib import Path
+        config_dir = str(Path.home() / "sona" / "config")
+        if config_dir not in sys.path:
+            sys.path.insert(0, config_dir)
+        from model_roles import get_role
+        return get_role(role)
+    except Exception:
+        return None
+
+
 def _resolve_model_name(requested_model_name: str | None = None) -> str:
     """Resolve a runtime model name safely, falling back to default if invalid. Returns None if no models are configured."""
     app_config = get_app_config()
@@ -59,13 +75,11 @@ def _create_summarization_middleware() -> SummarizationMiddleware | None:
     # Prepare keep parameter
     keep = config.keep.to_tuple()
 
-    # Prepare model parameter
-    if config.model_name:
-        model = config.model_name
-    else:
-        # Use a lightweight model for summarization to save costs
-        # Falls back to default model if not explicitly specified
-        model = create_chat_model(thinking_enabled=False)
+    # Prepare model parameter — resolve from ~/sona/config/models.yaml if not set
+    model_name = config.model_name
+    if model_name is None:
+        model_name = _resolve_model_from_sona_config("summarization")
+    model = create_chat_model(name=model_name, thinking_enabled=False)
 
     # Prepare kwargs
     kwargs = {

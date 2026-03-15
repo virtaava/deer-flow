@@ -230,6 +230,18 @@ class MemoryUpdater:
         """Get the model for memory updates."""
         config = get_memory_config()
         model_name = self._model_name or config.model_name
+        if model_name is None:
+            # Resolve from ~/sona/config/models.yaml
+            try:
+                import sys
+                from pathlib import Path
+                config_dir = str(Path.home() / "sona" / "config")
+                if config_dir not in sys.path:
+                    sys.path.insert(0, config_dir)
+                from model_roles import get_role
+                model_name = get_role("memory")
+            except Exception:
+                pass  # falls back to DeerFlow default
         return create_chat_model(name=model_name, thinking_enabled=False)
 
     def update_memory(self, messages: list[Any], thread_id: str | None = None, agent_name: str | None = None) -> bool:

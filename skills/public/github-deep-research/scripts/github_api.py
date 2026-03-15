@@ -79,7 +79,7 @@ class GitHubAPI:
         resp = requests.get(url, headers=headers, params=params, timeout=30)
         resp.raise_for_status()
 
-        if "application/vnd.github.raw" in (accept or ""):
+        if accept and ("raw" in accept or "diff" in accept or "patch" in accept):
             return resp.text
         return resp.json()
 
@@ -173,6 +173,17 @@ class GitHubAPI:
         return self._get(
             f"/repos/{owner}/{repo}/pulls",
             params={"state": state, "per_page": min(limit, 100)},
+        )
+
+    def get_pull_request(self, owner: str, repo: str, pr_number: int) -> Dict:
+        """Get single pull request details including base SHA and merge status."""
+        return self._get(f"/repos/{owner}/{repo}/pulls/{pr_number}")
+
+    def get_pull_request_diff(self, owner: str, repo: str, pr_number: int) -> str:
+        """Get pull request as unified diff text."""
+        return self._get(
+            f"/repos/{owner}/{repo}/pulls/{pr_number}",
+            accept="application/vnd.github.diff",
         )
 
     def get_releases(self, owner: str, repo: str, limit: int = 10) -> List[Dict]:
@@ -305,6 +316,8 @@ def main():
         "commits": lambda: api.get_recent_commits(owner, repo),
         "issues": lambda: api.get_issues(owner, repo),
         "prs": lambda: api.get_pull_requests(owner, repo),
+        "pr": lambda: api.get_pull_request(owner, repo, int(sys.argv[4])),
+        "pr-diff": lambda: api.get_pull_request_diff(owner, repo, int(sys.argv[4])),
         "releases": lambda: api.get_releases(owner, repo),
         "summary": lambda: api.summarize_repo(owner, repo),
     }
