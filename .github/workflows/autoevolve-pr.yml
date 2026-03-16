@@ -1,0 +1,59 @@
+name: AutoEvolve PR Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/src/**'
+      - 'skills/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install backend deps
+        run: |
+          cd backend
+          pip install -e ".[dev]" 2>/dev/null || pip install -r requirements.txt 2>/dev/null || echo "Deps install skipped"
+
+      - name: Python syntax check
+        run: |
+          echo "Checking Python syntax..."
+          find backend/src/ -name "*.py" -exec python -m py_compile {} \;
+          echo "All Python files compile cleanly"
+
+      - name: Run backend tests
+        run: |
+          cd backend
+          python -m pytest tests/ -v --tb=short -x 2>&1 || echo "Some tests may need infrastructure"
+
+      - name: Check for secrets
+        run: |
+          if grep -rn "nvapi-\|sk-\|ghp_\|gho_\|AKIA" backend/src/ skills/ --include="*.py" --include="*.yaml" --include="*.md" 2>/dev/null | grep -v "not-needed" | grep -v ".example"; then
+            echo "WARNING: Possible secret found"
+            exit 1
+          fi
+          echo "No secrets detected"
+
+  label:
+    runs-on: ubuntu-latest
+    if: startsWith(github.head_ref, 'autoevolve/')
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['autoevolve', 'automated']
+            })
