@@ -1,0 +1,252 @@
+# DeerFlow — DGX Spark config
+# Default model: deepseek (best value for agentic tasks)
+# Local models: devstral-small-2 (best local for agentic/tool-calling)
+
+models:
+  - name: deepseek
+    display_name: DeepSeek V3.2 (API)
+    use: langchain_openai:ChatOpenAI
+    model: deepseek-chat
+    api_key: $DEEPSEEK_API_KEY
+    base_url: https://api.deepseek.com/v1
+    max_tokens: 8192
+    temperature: 0.7
+    supports_thinking: false
+    supports_vision: false
+
+  - name: deepseek-thinking
+    display_name: DeepSeek R1 (Thinking)
+    use: src.models.patched_deepseek:PatchedChatDeepSeek
+    model: deepseek-reasoner
+    api_key: $DEEPSEEK_API_KEY
+    max_tokens: 16384
+    supports_thinking: true
+    supports_vision: false
+    when_thinking_enabled:
+      extra_body:
+        thinking:
+          type: enabled
+
+  - name: gpt-5-mini
+    display_name: GPT-5 Mini (GitHub Copilot)
+    use: langchain_openai:ChatOpenAI
+    model: gpt-5-mini
+    api_key: $COPILOT_SESSION_TOKEN
+    base_url: https://api.individual.githubcopilot.com
+    max_tokens: 4096
+    temperature: 0.7
+    supports_thinking: false
+    supports_vision: false
+    default_headers:
+      editor-version: "vscode/1.96.0"
+      copilot-integration-id: "vscode-chat"
+      User-Agent: "GitHubCopilotChat/0.22.0"
+
+  - name: llama-nano
+    display_name: Llama Nano (Nemotron 30B)
+    use: langchain_openai:ChatOpenAI
+    model: nvidia/nemotron-3-nano
+    api_key: not-needed
+    base_url: http://127.0.0.1:11800/v1
+    max_tokens: 4096
+    temperature: 0.7
+    supports_thinking: false
+    supports_vision: false
+
+  - name: llama-brain
+    display_name: Llama Brain (Qwen 35B MoE)
+    use: langchain_openai:ChatOpenAI
+    model: qwen/qwen3.5-35b-a3b
+    api_key: not-needed
+    base_url: http://127.0.0.1:11810/v1
+    max_tokens: 4096
+    temperature: 0.7
+    supports_thinking: false
+    supports_vision: false
+
+  - name: llama-agent
+    display_name: Llama Agent (Llama 3.3 70B)
+    use: langchain_openai:ChatOpenAI
+    model: meta-llama/Llama-3.3-70B-Instruct
+    api_key: not-needed
+    base_url: http://127.0.0.1:11820/v1
+    max_tokens: 4096
+    temperature: 0.7
+    supports_thinking: false
+    supports_vision: false
+
+  - name: qwen3-coder
+    display_name: Qwen3 Coder (30B MoE, 3B active)
+    use: langchain_ollama:ChatOllama
+    model: qwen3-coder:30b
+    base_url: http://127.0.0.1:11434
+    num_predict: 4096
+    temperature: 0.7
+    num_ctx: 8192
+    supports_thinking: false
+    supports_vision: false
+
+  - name: devstral
+    display_name: Devstral Small 2 (24B, Ollama)
+    use: langchain_ollama:ChatOllama
+    model: devstral-small-2
+    base_url: http://127.0.0.1:11434
+    num_predict: 8192
+    temperature: 0.7
+    num_ctx: 32768
+    supports_thinking: false
+    supports_vision: false
+
+  - name: hermes4
+    display_name: Hermes 4 (14B, NousResearch)
+    use: src.models.hermes_chat_ollama:HermesChatOllama
+    model: hermes4:14b
+    base_url: http://127.0.0.1:11434
+    num_predict: 4096
+    temperature: 0.6
+    num_ctx: 8192
+    supports_thinking: false
+    supports_vision: false
+
+tool_groups:
+  - name: web
+  - name: file:read
+  - name: file:write
+  - name: bash
+  - name: harness
+
+tools:
+  # Web search + fetch via local SearxNG (no API key needed)
+  - name: web_search
+    group: web
+    use: src.community.searxng.tools:web_search_tool
+    base_url: http://127.0.0.1:8080
+    max_results: 5
+
+  - name: web_fetch
+    group: web
+    use: src.community.searxng.tools:web_fetch_tool
+    timeout: 10
+
+  - name: image_search
+    group: web
+    use: src.community.image_search.tools:image_search_tool
+    max_results: 5
+
+  - name: ls
+    group: file:read
+    use: src.sandbox.tools:ls_tool
+
+  - name: read_file
+    group: file:read
+    use: src.sandbox.tools:read_file_tool
+
+  - name: write_file
+    group: file:write
+    use: src.sandbox.tools:write_file_tool
+
+  - name: str_replace
+    group: file:write
+    use: src.sandbox.tools:str_replace_tool
+
+  - name: bash
+    group: bash
+    use: src.sandbox.tools:bash_tool
+
+  # Harness tools — restricted ACI layer (no free-form edits)
+  - name: harness_read_file
+    group: harness
+    use: src.sandbox.harness_tools:harness_read_file_tool
+
+  - name: harness_search
+    group: harness
+    use: src.sandbox.harness_tools:harness_search_tool
+
+  - name: harness_propose_patch
+    group: harness
+    use: src.sandbox.harness_tools:harness_propose_patch_tool
+
+  - name: harness_apply_patch
+    group: harness
+    use: src.sandbox.harness_tools:harness_apply_patch_tool
+
+  - name: harness_run_tests
+    group: harness
+    use: src.sandbox.harness_tools:harness_run_tests_tool
+
+  - name: harness_commit
+    group: harness
+    use: src.sandbox.harness_tools:harness_commit_tool
+
+  - name: harness_status
+    group: harness
+    use: src.sandbox.harness_tools:harness_status_tool
+
+# Local sandbox — direct execution on Spark
+sandbox:
+  use: src.sandbox.local:LocalSandboxProvider
+
+# Subagent config
+subagents:
+  timeout_seconds: 600  # 10 min default (local models are slower)
+  agents:
+    general-purpose:
+      timeout_seconds: 900
+    bash:
+      timeout_seconds: 300
+
+skills:
+  container_path: /mnt/skills
+
+title:
+  enabled: false
+  max_words: 6
+  max_chars: 60
+  model_name: null
+
+summarization:
+  enabled: true
+  model_name: null  # resolved from ~/sona/config/models.yaml role "summarization"
+  trigger:
+    - type: tokens
+      value: 15564
+  keep:
+    type: messages
+    value: 10
+  trim_tokens_to_summarize: 15564
+
+memory:
+  enabled: true
+  storage_path: memory.json
+  debounce_seconds: 30
+  model_name: null  # resolved from ~/sona/config/models.yaml role "memory"
+  max_facts: 100
+  fact_confidence_threshold: 0.7
+  injection_enabled: true
+  max_injection_tokens: 2000
+
+# Postgres persistence — threads survive restarts
+checkpointer:
+  type: postgres
+  connection_string: postgresql://postgres:postgres@127.0.0.1:5432/deerflow
+
+# IM Channels — DeerFlow's own Telegram presence
+channels:
+  langgraph_url: http://localhost:2024
+  gateway_url: http://localhost:8011
+
+  session:
+    assistant_id: lead_agent
+    config:
+      recursion_limit: 150
+    context:
+      thinking_enabled: true
+      is_plan_mode: false
+      subagent_enabled: true
+      self_evaluation_enabled: true
+
+  telegram:
+    enabled: true
+    bot_token: $DEERFLOW_TELEGRAM_BOT_TOKEN
+    allowed_users:
+      - 1498269988  # Toni
