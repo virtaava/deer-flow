@@ -444,3 +444,14 @@ checkpointer:
 #           context:
 #             thinking_enabled: true
 #             subagent_enabled: true
+
+# Uploads
+# ----------------------------------------------------------------------
+# Controls how user-uploaded files are processed by the host process.
+# uploads:
+#   # Convert PDF/PPT/Excel/Word uploads to Markdown using markitdown on the host.
+#   # SECURE DEFAULT: false. Enabling this exposes the markitdown parser stack
+#   # (and its transitive PDF/Office libraries) to untrusted user input — bugs in
+#   # those libraries become potential sandbox-escape vectors. Only enable on
+#   # deployments where uploads come from trusted users.
+#   auto_convert_documents: false

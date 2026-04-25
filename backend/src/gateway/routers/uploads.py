@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from src.config.app_config import get_app_config
 from src.config.paths import VIRTUAL_PATH_PREFIX, get_paths
 from src.sandbox.sandbox_provider import get_sandbox_provider
 
@@ -73,6 +74,33 @@ async def convert_file_to_markdown(file_path: Path) -> Path | None:
         return None
 
 
+def _get_uploads_config_value(key: str, default: object) -> object:
+    """Read a value from the uploads config, supporting dict and attribute access."""
+    cfg = get_app_config()
+    uploads_cfg = getattr(cfg, "uploads", None)
+    if isinstance(uploads_cfg, dict):
+        return uploads_cfg.get(key, default)
+    return getattr(uploads_cfg, key, default)
+
+
+def _auto_convert_documents_enabled() -> bool:
+    """Return whether automatic host-side document conversion is enabled.
+
+    The secure default is disabled unless an operator explicitly opts in via
+    ``uploads.auto_convert_documents`` in config.yaml. Without this gate, any
+    user-uploaded document is fed through markitdown on the host process —
+    that is a meaningful sandbox-escape surface (parser bugs in PDF/Office
+    handling can be exploited via a crafted upload).
+    """
+    try:
+        raw = _get_uploads_config_value("auto_convert_documents", False)
+        if isinstance(raw, str):
+            return raw.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(raw)
+    except Exception:
+        return False
+
+
 @router.post("", response_model=UploadResponse)
 async def upload_files(
     thread_id: str,
@@ -80,8 +108,11 @@ async def upload_files(
 ) -> UploadResponse:
     """Upload multiple files to a thread's uploads directory.
 
-    For PDF, PPT, Excel, and Word files, they will be converted to markdown using markitdown.
-    All files (original and converted) are saved to /mnt/user-data/uploads.
+    For PDF, PPT, Excel, and Word files, they may be converted to markdown using
+    markitdown — but only when ``uploads.auto_convert_documents: true`` is set in
+    config.yaml. The default is disabled (the host-side parser surface is a
+    sandbox-escape risk if exposed to untrusted uploads).
+    All files (original and any converted output) are saved to /mnt/user-data/uploads.
 
     Args:
         thread_id: The thread ID to upload files to.
@@ -100,6 +131,7 @@ async def upload_files(
     sandbox_provider = get_sandbox_provider()
     sandbox_id = sandbox_provider.acquire(thread_id)
     sandbox = sandbox_provider.get(sandbox_id)
+    auto_convert_documents = _auto_convert_documents_enabled()
 
     for file in files:
         if not file.filename:
@@ -135,9 +167,12 @@ async def upload_files(
 
             logger.info(f"Saved file: {safe_filename} ({len(content)} bytes) to {relative_path}")
 
-            # Check if file should be converted to markdown
+            # Check if file should be converted to markdown.
+            # Conversion is gated behind uploads.auto_convert_documents in config.yaml
+            # because feeding user-supplied PDFs/Office docs through markitdown on
+            # the host process is a sandbox-escape surface (CVE-class).
             file_ext = file_path.suffix.lower()
-            if file_ext in CONVERTIBLE_EXTENSIONS:
+            if auto_convert_documents and file_ext in CONVERTIBLE_EXTENSIONS:
                 md_path = await convert_file_to_markdown(file_path)
                 if md_path:
                     md_relative_path = str(paths.sandbox_uploads_dir(thread_id) / md_path.name)
