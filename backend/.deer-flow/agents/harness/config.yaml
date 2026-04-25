@@ -1,0 +1,13 @@
+# Harness agent — restricted ACI tool layer
+# Only has harness tools + web search. No bash, no free-form file edits.
+# All code changes go through propose_patch → validate → apply_patch.
+
+name: harness
+description: >
+  Restricted agent for code tasks. Uses harness tools with inline validation,
+  linting, and sequenced execution (read → propose → apply → test → commit).
+  Cannot write files directly or run arbitrary shell commands.
+
+tool_groups:
+  - harness
+  - web

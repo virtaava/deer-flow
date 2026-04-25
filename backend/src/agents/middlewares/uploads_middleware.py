@@ -9,6 +9,7 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import HumanMessage
 from langgraph.runtime import Runtime
 
+from src.agents.middlewares._runtime_helpers import resolve_runtime_value
 from src.config.paths import Paths, get_paths
 
 logger = logging.getLogger(__name__)
@@ -146,7 +147,7 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
             return None
 
         # Resolve uploads directory for existence checks
-        thread_id = runtime.context.get("thread_id")
+        thread_id = resolve_runtime_value(runtime, "thread_id")
         uploads_dir = self._paths.sandbox_uploads_dir(thread_id) if thread_id else None
 
         # Get newly uploaded files from the current message's additional_kwargs.files

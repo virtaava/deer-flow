@@ -5,6 +5,10 @@ from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
 from langgraph.runtime import Runtime
 
+from src.agents.middlewares._runtime_helpers import (
+    require_thread_id,
+    resolve_runtime_value,
+)
 from src.agents.thread_state import SandboxState, ThreadDataState
 from src.sandbox import get_sandbox_provider
 
@@ -56,7 +60,7 @@ class SandboxMiddleware(AgentMiddleware[SandboxMiddlewareState]):
 
         # Eager initialization (original behavior)
         if "sandbox" not in state or state["sandbox"] is None:
-            thread_id = runtime.context["thread_id"]
+            thread_id = require_thread_id(runtime)
             sandbox_id = self._acquire_sandbox(thread_id)
             logger.info(f"Assigned sandbox {sandbox_id} to thread {thread_id}")
             return {"sandbox": {"sandbox_id": sandbox_id}}
@@ -71,8 +75,8 @@ class SandboxMiddleware(AgentMiddleware[SandboxMiddlewareState]):
             get_sandbox_provider().release(sandbox_id)
             return None
 
-        if runtime.context.get("sandbox_id") is not None:
-            sandbox_id = runtime.context.get("sandbox_id")
+        sandbox_id = resolve_runtime_value(runtime, "sandbox_id")
+        if sandbox_id is not None:
             logger.info(f"Releasing sandbox {sandbox_id} from context")
             get_sandbox_provider().release(sandbox_id)
             return None
