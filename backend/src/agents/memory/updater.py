@@ -1,7 +1,9 @@
 """Memory updater for reading, writing, and updating memory data."""
 
+import copy
 import json
 import re
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,6 +61,9 @@ def _create_empty_memory() -> dict[str, Any]:
 # Per-agent memory cache: keyed by agent_name (None = global)
 # Value: (memory_data, file_mtime)
 _memory_cache: dict[str | None, tuple[dict[str, Any], float | None]] = {}
+# Guards every read and write of _memory_cache. The background memory-update
+# timer thread and HTTP reload calls can race on this dict otherwise.
+_cache_lock = threading.Lock()
 
 
 def get_memory_data(agent_name: str | None = None) -> dict[str, Any]:
@@ -81,15 +86,17 @@ def get_memory_data(agent_name: str | None = None) -> dict[str, Any]:
     except OSError:
         current_mtime = None
 
-    cached = _memory_cache.get(agent_name)
+    with _cache_lock:
+        cached = _memory_cache.get(agent_name)
+        if cached is not None and cached[1] == current_mtime:
+            return cached[0]
 
-    # Invalidate cache if file has been modified or doesn't exist
-    if cached is None or cached[1] != current_mtime:
-        memory_data = _load_memory_from_file(agent_name)
+    memory_data = _load_memory_from_file(agent_name)
+
+    with _cache_lock:
         _memory_cache[agent_name] = (memory_data, current_mtime)
-        return memory_data
 
-    return cached[0]
+    return memory_data
 
 
 def reload_memory_data(agent_name: str | None = None) -> dict[str, Any]:
@@ -109,7 +116,8 @@ def reload_memory_data(agent_name: str | None = None) -> dict[str, Any]:
     except OSError:
         mtime = None
 
-    _memory_cache[agent_name] = (memory_data, mtime)
+    with _cache_lock:
+        _memory_cache[agent_name] = (memory_data, mtime)
     return memory_data
 
 
@@ -189,8 +197,10 @@ def _save_memory_to_file(memory_data: dict[str, Any], agent_name: str | None = N
         # Ensure directory exists
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Update lastUpdated timestamp
-        memory_data["lastUpdated"] = datetime.now(timezone.utc).isoformat()
+        # Shallow-copy before adding lastUpdated so the caller's dict is not
+        # mutated as a side-effect, and the cache reference is not silently
+        # updated before the file write succeeds.
+        memory_data = {**memory_data, "lastUpdated": datetime.now(timezone.utc).isoformat()}
 
         # Write atomically using temp file
         temp_path = file_path.with_suffix(".tmp")
@@ -206,7 +216,8 @@ def _save_memory_to_file(memory_data: dict[str, Any], agent_name: str | None = N
         except OSError:
             mtime = None
 
-        _memory_cache[agent_name] = (memory_data, mtime)
+        with _cache_lock:
+            _memory_cache[agent_name] = (memory_data, mtime)
 
         print(f"Memory saved to {file_path}")
         return True
@@ -291,8 +302,9 @@ class MemoryUpdater:
 
             update_data = json.loads(response_text)
 
-            # Apply updates
-            updated_memory = self._apply_updates(current_memory, update_data, thread_id)
+            # Deep-copy before in-place mutation so a subsequent save() failure
+            # cannot corrupt the still-cached original object reference.
+            updated_memory = self._apply_updates(copy.deepcopy(current_memory), update_data, thread_id)
 
             # Strip file-upload mentions from all summaries before saving.
             # Uploaded files are session-scoped and won't exist in future sessions,
